@@ -8,7 +8,11 @@ const schema = mongoose.Schema({
     length: Number,
     start: Date,
     end: Date,
-    channel: String
+    channel: String,
+    broadcasted: {
+        type: Boolean,
+        default: false
+    }
 });
 
 schema.plugin(mongoosePaginate);

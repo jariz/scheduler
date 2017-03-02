@@ -7,6 +7,7 @@ import glob from 'glob';
 import chalk from 'chalk';
 import mongoose from 'mongoose';
 import Program from './models/program';
+import Channel from './models/channel';
 import moment from 'moment';
 
 class Scheduler extends EventEmitter {
@@ -19,7 +20,6 @@ class Scheduler extends EventEmitter {
 
     constructor() {
         super();
-        this.on('sync', (...args) => this.sync(...args));
         this.init();
     }
 
@@ -38,31 +38,22 @@ class Scheduler extends EventEmitter {
         model.end = moment(model.start).add(model.length).toDate();
 
         await model.save();
-        this.emit('sync', model.channel);
     }
 
-    // syncs programs back to memory
-    async sync(channel = null) {
-        // todo: obviously, not all programs should be loaded (perhaps only ones for the next 12 hours or smth)
-        
-        const all = await Program.find(channel ? { channel } : null);
-        for(let program of all) {
-            if(this.programMap.has(program.channel)) {
-                this.programMap.set(program.channel, [...this.programMap.get(program.channel), program]);
-            } else {
-                this.programMap.set(program.channel, [program]);
-            }
-        }
-    }
-
-    poll() {
-        for(let [channel, programs] of this.programMap.entries()) {
-            for(let program of programs) {
-                const now = moment();
-                log.debug(program.title, 'will start in', moment(program.start).fromNow(), `(${program.start})`, 'on channel', channel)
-                if(moment(program.start).isSameOrBefore(now) && moment(program.end).isSameOrAfter(now)) {
-                    this.emit('start', channel, program);
-                }
+    async poll() {
+        for(let channel of await Channel.find()) {
+            const program = await Program.findOneAndUpdate({
+                channel: channel.name,
+                broadcasted: false,
+                start: { $lte: new Date() },
+                end: { $gte: new Date() }
+            }, {
+                broadcasted: true
+            });
+            
+            if(program) {
+                log.debug('Started', program.title, 'on channel', program.channel);
+                this.emit('start', program.channel, program);
             }
         }
     }
@@ -89,9 +80,6 @@ class Scheduler extends EventEmitter {
             mongoose.connect('mongodb://localhost/pseudo');
 
             this.web = new WebServer(this);
-
-            //load programs into mem
-            this.emit('sync');
 
             setInterval(() => this.poll(), 1000);
         } catch (ex) {
