@@ -1,3 +1,6 @@
 {
-    "port": 3131
+    "port": 3131,
+    "youtube": {
+        "key": "enter-me"
+    }
 }
